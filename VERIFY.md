@@ -1,0 +1,63 @@
+# Verification: Beatboxing to MIDI (Frozen In Flames Edition)
+
+Scaffold: `~/workspace/beatbox-to-midi/` (sources copied from the owner's uploads in `~/workspace/user/files/`, never modified there). Method: ground-truth tests with known answers (synthetic signals with exact expected outputs, negative controls), run in Node and in headless Chromium against the real page served over HTTP. Evidence (drivers, clips, harvested MIDIs, screenshot) lives in `~/workspace/bb-verify/` so the repo tree stays clean.
+
+## Feature verdicts
+
+**1. Classification gate (unit, Node): WORKS.**
+Calibration with one label only: falls back to rules (query returns `hat`) or to the trained model when one is set (returns `hum` from a stub model); it never uses k-NN. With 2 labels and 6 samples: k-NN takes over (query returns `kick` where the rules say `hat`). With only 2 samples total: rules again (`hat`). This matches the owner's stated fix (at least two sound types before calibration takes over).
+
+**2. Tempo estimation (unit + browser): WORKS, one stated limit.**
+`estimateBpm` on pure quarter-note onset grids: 90, 120, 140 BPM all returned exactly. In the page, a click track at exactly 90 BPM with the Tempo box blank filled the box with `90` and found 10 of 10 clicks. Limit, measured: a uniform 8th-note grid at 90 BPM returns 180 (at 120 and 140 the mixed grid still returns the true tempo, because double tempo falls outside the 70 to 180 search range there). Blocker: the estimator receives onset times only; a uniform 8th grid is metrically identical to double-tempo quarters, and no accent information reaches the function to separate them.
+
+**3. SFX clustering math (unit): WORKS.**
+`kmeans` on a fixed probe matrix returns identical assignments on repeated runs (deterministic farthest-point init), and the two probe groups separate cleanly.
+
+**4. Pitch tracking and note segmentation (unit): WORKS.**
+`pitchNotes` on the glide signal (196 to 262 Hz sweep over 1.5 s, jump to 392 Hz): exactly 2 notes, MIDI 57 with bends spanning -1.92 to +3.06 semitones (the sweep itself spans 55 to 60 around the median-referenced 57) and MIDI 67. On a steady 110 Hz tone: exactly 1 note, MIDI 45, duration 0.94 s of a 1 s tone.
+
+**5. Trained model path (train + predict): WORKS.**
+Synthetic dataset (10 files per label: kick, snare, hat, bass, hum; synthesized sine-drop kicks, noise snares and hats, sustained bass and hum tones). `npm run train`: 82 sounds extracted, train accuracy 98.8%, held-out 88.2%. `model/model.json` shape matches `forward()` in `src/model.js`: labels [bass, hat, hum, kick, snare], mu and sd of length 6, W1 16x6, b1 16, W2 5x16, b2 5. Fresh synthetic examples through `predict()`: first event of every file correct, 30 of 30 across the five classes; counting every detected event, 47 of 53 (kick 12 of 14, the 2 misses are kick glide tails read as hum; snare 7 of 7, hat 6 of 6, bass 10 of 10, hum 12 of 12).
+
+**6. Layer separation, hum under hats (browser, layers on vs off): WORKS.**
+Ground truth clip: 110 Hz hum sustained 4 s, 8 hat clicks at 8th notes at 120 BPM. Layers ON: status `hat 8, bass 1`; the master MIDI has exactly 8 hat notes (channel 9, note 42) and exactly 1 pitched note (MIDI 45, channel 0, duration 4.1 s). Layers OFF on the same clip (negative control): `kick 20, hat 6, bass 3`, 29 events, the hum fragmented into phantom kicks and only 6 of 8 clicks found. HPSS runtime in the page: 2.9 s for this 4.6 s clip, 7.0 s for the 12 s excerpt below.
+
+**7. Pitch bends in exported MIDI (browser): WORKS.**
+Glide clip through the page: hum track holds exactly 2 notes (57 and 67, channel 1), 126 pitch-bend (0xE0) events, and the RPN bend-range sequence CC101=0, CC100=0, CC6=12, CC38=0 followed by RPN null (101=127, 100=127), i.e. bend range set to 12 semitones. Note durations in the file match the 1.5 s sweep and 1 s hold at the detected tempo.
+
+**8. SFX clusters and user naming (browser): WORKS, one stated routing limit.**
+Probe clip of 6 descending chirps (2500 to 700 Hz, a timbre outside the kit classes): status `snare 11, sfx1 6, sfx2 5`, separate `sfx1.mid` and `sfx2.mid` downloads, and two cluster rows in the page with counts and label controls (screenshot: `~/workspace/bb-verify/browser/sfx-converted.png`). Labelling the sfx1 cluster as kick: calibration grew from 0 to 6 samples (all kick), the page showed `kick 6`, and the conversion reran with downloads regenerated. By the owner's own gate (two types minimum), the labelled events stay sfx until a second type is calibrated; that behavior is the designed one and was verified as such in test 1. Routing limit, measured: unknown sounds whose timbre sits inside a kit class's feature range do not reach the clusters. Two probes (lip pops; band-limited noise swells) produced zero sfx events (pops: snare 5, kick 1, hum 2; swells: snare 6, hum 1). The model assigns kit labels to them with confidence 0.48 to 0.99, and their nearest-centroid distances in z-space (1.34 to 1.98) fall inside the training clouds' own spread (own-centroid distances up to 2.59). Blocker: in the delivered feature set (centroid, low/high energy, zero crossings, clarity, duration) these timbres are not separable from snare and kick; no confidence or distance threshold separates them without also rejecting real kit sounds.
+
+**9. Human_SFX regression (browser, layers on): WORKS (separation and export verified; labels ungraded).**
+12 s excerpt of the owner's `Human_SFX__Frozen_In_Flames.m4a`: converted in 7.0 s, status `178 BPM. snare 76, hat 3, hum 22, sfx1 1` (102 events), all 5 offered MIDIs parse clean. No ground-truth labels exist for this clip, so per-class accuracy on it cannot be graded; the earlier full-clip layers-off numbers (kick 1, snare 53, hat 133, hum 1 of 188, from the v1 browser eval) stand as the comparison point. A Node layers-off pass on the full clip with identical decode before and after this pass's fixes: 209 events both times, rules labels moved from {hat 153, kick 1, snare 54, hum 1} to {hat 148, kick 5, snare 54, hum 2} (see Fixes 2).
+
+**10. MIDI validity (all outputs): WORKS.**
+Every harvested file from every browser run (per-class files and masters, 20+ files) parses with mido: format 1, PPQ 480, well-formed tracks, exact note-on/note-off pairing, notes within 0 to 127, drums only on channel index 9 with GM numbers (kick 36, snare 38, hat 42, sfx notes from his table), pitched tracks on channels 0 (bass) and 1 (hum), sfx clusters on channel 9 with their own notes (39, 56, ...).
+
+**11. Offline package: WORKS.**
+`dist/beatboxing-to-midi-offline.zip` (21,081 bytes). Unzipped fresh, served locally, and driven in the browser with no other files present: the 90 BPM clip converted to `90 BPM. hat 10` with downloads and zero page errors. A grep of `index.html`, `src/`, and `train/` for external references finds exactly one fetch in the whole app, the relative `model/model.json`; no CDNs, fonts, or remote calls. `OFFLINE.md` inside the zip documents the local-server requirement (ES modules do not load from `file://`).
+
+## FIXES (what changed, measured before and after)
+- `src/classify.js`: the shared feature vector `vec()` now includes event duration `f.dur` (6 features), because kicks and bass tones were identical in the old 5 features. Model train accuracy 86.2% to 98.8%, held-out 82.4% to 88.2%, fresh kick first-event accuracy 0 of 6 to 6 of 6.
+- `src/classify.js`: the rules' pitched branch now requires a sustained event (`f.dur >= 0.2`), so a short pitched kick burst is no longer labelled bass. Full-clip Human_SFX rules pass: kick count 1 to 5 of 209 events, hum 1 to 2.
+- `src/app.js`: in layers mode, percussive events under 8% of the layer's loudest event level are dropped (the harmonic layer's mask ripple was being detected as hits at relative level 0.02 or less, while real hits measured 0.85 to 1.00). Layered ground-truth clip: `kick 41, hat 8, bass 1, sfx1 2` before, `hat 8, bass 1` after.
+- Scaffold layout: the app now lives in the `src/` structure his docs describe. As uploaded flat, `index.html` requested `src/app.js` and got a 404 (app fully inert, per the earlier eval); in the scaffold every module loads, zero console errors in all runs.
+- `README.md`: rewritten for this edition (see Flagged edits).
+- `LICENSE`: created as plain MIT text (see Flagged edits).
+- `index.html`: page title and h1 set to the edition name (see Flagged edits).
+
+## Remaining defects and limits (with blockers)
+- Tempo doubling on uniform 8th-note grids at slow tempos: see verdict 2. Blocker is information (times only), inside the delivered estimator design.
+- SFX routing for kit-adjacent timbres: see verdict 8. Blocker is feature-space overlap, measured with confidence and centroid-distance probes.
+- Event splitting: one synthetic kick yields 2 detected events (attack plus glide tail) in both training extraction and conversion, so counts can inflate; both halves classify as kick after Fix 1 (12 of 14 kick events correct, the other 2 read as hum). The glide clip also shows the percussive layer reporting the tone's attack, its pitch jump, and its release as hits (kick 2, sfx1 1) alongside the correct hum notes; those three are genuine signal discontinuities in a clip that contains no drums.
+- `pitchNotes` labels any note below MIDI 48 as `bass`, so the 110 Hz test hum lands in the bass track at the exact pitch (45). This is the label convention in the delivered `src/layers.js` and was kept.
+- YIN pitch has no parabolic interpolation (unchanged from the delivered code), so raw pitch is quantized to whole sample periods; in the glide test the exported bend span still landed within 0.1 semitone of the true sweep.
+
+## Flagged edits (content changed beyond code fixes)
+- LICENSE name: `LICENSE.bin` held the MIT text as a single line with literal `\n` escapes and the placeholder `Copyright (c) 2026 <your name>`. The scaffold `LICENSE` is the same MIT text with real line breaks and the placeholder replaced by `Aries Hilton`, year 2026.
+- README Limits (from the original brief): the delivered README still claimed overlapping sounds are not separated and a glide becomes one note, contradicting its own features section. The scaffold README replaces those lines with the accurate limits: HPSS is slow on clips over about 30 s; a glide inside one note is written as pitch-bend points and jumps over 1 semitone split notes.
+- README rewrite (this pass): retitled `Beatboxing to MIDI (Frozen In Flames Edition)`, with the feature list, online and offline run instructions, the calibration gate stated exactly as coded (two types, three samples), the training workflow (`data/<label>/`, `npm run train`, commit `model/model.json`), and the dataset-licence warning.
+- Page title: `index.html` `<title>` and `<h1>` changed from `Beatbox to MIDI` to the edition name, to match the README.
+
+## Repo state
+Clean git repo at `~/workspace/beatbox-to-midi/`, one commit (`89e586a`, "Beatboxing to MIDI (Frozen In Flames Edition): verified working app"), 14 tracked files: `.gitignore`, `LICENSE`, `OFFLINE.md`, `README.md`, `index.html`, `model/model.json`, `package.json`, `src/{app,classify,dsp,layers,midi,model}.js`, `train/train.mjs`. `.gitignore` excludes training audio under `data/` and OS junk and `dist/`, and deliberately does not exclude `model/model.json`. The synthetic training WAVs used for verification remain on disk under `data/` (untracked) so `npm run train` can be rerun. The offline zip is built at `dist/beatboxing-to-midi-offline.zip` (untracked, 21,081 bytes, 13 files: index.html, OFFLINE.md, README.md, LICENSE, package.json, src/ x6, train/train.mjs, model/model.json). Nothing has been published to GitHub.
