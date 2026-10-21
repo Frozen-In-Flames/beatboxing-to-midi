@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beatboxing to MIDI (Frozen In Flames Edition)</title>
+<style>
+  :root { --bg:#eef1f5; --ink:#1b2430; --mute:#5b6675; --line:#c9d1dc; --acc:#0f766e; --card:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161b22; --ink:#e6ebf2; --mute:#98a3b3; --line:#2b3441; --acc:#2dd4bf; --card:#1d242d; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 "Avenir Next","Segoe UI",system-ui,sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 20px 64px; }
+  h1 { font-size: 2.2rem; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 8px; }
+  p.lead { color: var(--mute); margin: 0 0 28px; max-width: 52ch; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+  h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button, select, input[type=number] { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; }
+  button.primary { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+  button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+  small { color: var(--mute); }
+  #out { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  #out a { color: var(--acc); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; text-decoration: none; }
+  #clusters div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  #status { min-height: 1.5em; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Beatboxing to MIDI (Frozen In Flames Edition)</h1>
+  <p class="lead">Record a beatbox or open an audio file. You get one MIDI file per sound type, plus a master file with every track.</p>
+
+  <section>
+    <h2>Your clip</h2>
+    <div class="row">
+      <button id="rec">Record</button>
+      <label>or <input id="file" type="file" accept="audio/*"></label>
+    </div>
+    <p id="status" role="status"></p>
+  </section>
+
+  <section>
+    <h2>Teach it your sounds</h2>
+    <p><small>Record yourself repeating one sound, pick its name, then add it. Five or more repeats per sound works best.</small></p>
+    <div class="row">
+      <select id="label" aria-label="Sound name"><option>kick</option><option>snare</option><option>hat</option><option>bass</option><option>hum</option><option>sfx</option></select>
+      <button id="cal">Add clip as samples</button>
+      <button id="clear">Clear</button>
+    </div>
+    <p><small id="calinfo"></small></p>
+  </section>
+
+  <section>
+    <h2>Convert</h2>
+    <div class="row">
+      <label>Tempo, blank to detect <input id="bpm" type="number" placeholder="auto" min="40" max="240" style="width:5em"></label>
+      <label><input id="quant" type="checkbox"> Snap to 16th notes</label>
+      <label><input id="layers" type="checkbox" checked> Separate humming from beats</label>
+      <label>Sensitivity <input id="sens" type="range" min="0.5" max="3" step="0.1" value="1"></label>
+    </div>
+    <p><button id="go" class="primary">Convert to MIDI</button></p>
+    <div id="out"></div>
+    <div id="clusters"></div>
+  </section>
+</main>
+<script type="module" src="src/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# Training audio is not committed; the trained model (model/model.json) is.
+data/**/*.wav
+data/**/*.mp3
+data/**/*.m4a
+
+# Build output
+dist/
+
+# OS and editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Node (training script runs with plain node; no dependencies)
+node_modules/
+npm-debug.log*
