@@ -64,3 +64,12 @@ Clean git repo at `~/workspace/beatbox-to-midi/` (app commit `89e586a`, "Beatbox
 
 ## Re-confirmation note
 After the first pass, the full battery was re-run against the committed code and the shipped model. Every browser count reproduced exactly (layered on and off, glide, tempo, SFX clusters and labelling, Human_SFX excerpt), and training reproduced the committed `model/model.json` byte for byte. Four figures from the first pass did not reproduce and have been corrected in the sections above: the train and held-out accuracies (100.0% and 100.0%, not 98.8% and 88.2%), the fresh-example predict totals (46 of 50 overall, 29 of 30 first-event, not 47 of 53 and 30 of 30), and the Human_SFX rules-pass counts in verdict 9 and Fix 2. The first-pass figures were captured while code edits and a background training run overlapped; the corrected figures are the ones that reproduce on the committed state.
+
+## v1.0.1 addendum (real weights, re-verified in the repo)
+
+v1.0.1 swaps `model/model.json` for weights trained on real labeled audio (Amateur Vocal Percussion dataset; full record in `docs/training-avp.md`; md5 `52c8936f36492a0a0a49b64491d2fab6`). No classification code changed. The ground-truth battery was re-run in Node against the repo itself with the new model in place:
+
+- **Layered clip, layers ON: PASS, exact.** Master MIDI holds exactly 8 hat notes (channel 9, note 42) and exactly 1 pitched note (MIDI 45, channel 0): `hat 8, bass 1`, identical to v1.0.0.
+- **Glide clip: PASS.** Hum notes at MIDI 57 and 67 with exactly 126 pitch-bend events, identical to v1.0.0.
+- **MIDI validity: PASS.** All 14 files emitted across the battery parse clean under mido (format 1, PPQ 480, exact note on/off pairing).
+- **Measured accuracy of the new model** (protocols in `docs/training-avp.md`): 60.3% on voices never heard in training (kick 76.0%, snare 41.7%, hat 61.2%); 71.9% on the improvisation benchmark protocol, where the v1.0.0 synthetic model scored 32.8%, below the 40.8% of the built-in rules alone. Per-user calibration remains best at 74.5%.

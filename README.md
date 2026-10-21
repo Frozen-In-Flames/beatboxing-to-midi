@@ -26,6 +26,17 @@ python3 -m http.server
 
 A local server is required because browsers will not load ES modules from `file://`. The app makes no external network requests; the only file it ever fetches is the optional `model/model.json` next to it. See `OFFLINE.md` in the zip for details.
 
+## Built-in model and measured accuracy
+The committed `model/model.json` (v1.0.1) was trained on real labeled beatbox audio, not synthetic examples. Accuracy was measured two ways; both numbers are reported because they answer different questions:
+
+- **Voices the model never heard** (trained on 20 of 25 people, graded on the 5 unseen ones): **60.3% overall** (kick 76.0%, snare 41.7%, hat 61.2%). This is the honest estimate for a brand-new user.
+- **Benchmark protocol on the shipped code** (graded on full improvisation takes; those voices were in the training data, the performances were not): **71.9%**.
+- **Your own calibration still wins**: teaching it 5 samples per sound scores 74.5% on the same benchmark, so calibrating with your own voice remains the most accurate path.
+
+Full method, confusion counts, and limits: `docs/training-avp.md`.
+
+> The built-in classifier weights in `model/model.json` were trained on the Amateur Vocal Percussion (AVP) dataset by Delgado et al. (2019), available at https://doi.org/10.5281/zenodo.3250230 under the Creative Commons Attribution 4.0 International license (CC-BY-4.0). The dataset provided the kick, snare, and hat training audio; the bass and hum classes were trained on synthetic examples generated for this project. No AVP audio files are distributed with this project; only the trained weights derived from them.
+
 ## Teach it your sounds (calibration)
 Record yourself repeating one sound, pick its name, then "Add clip as samples". Five or more repeats per sound works best. Calibration takes over once it covers at least two different sound types with at least three samples total; until then the trained model or the built-in rules do the labelling. Samples live in your browser's localStorage.
 
@@ -47,6 +58,8 @@ A beatbox is one mouth on one channel, so there are no stems to separate. The ap
 4. `src/midi.js` writes standard MIDI files (format 1, one track per class plus a master).
 
 ## Limits
+- Snare is the weak class, and the limit is the feature space, not the tuning: the model fits snare at only 40% even on its own training data, because amateur "pf" snares genuinely overlap hats and kicks in the measured features. Per-user calibration (74.5% on the benchmark) is the current best fix.
+- Bass and hum have no real labeled ground truth yet: the dataset used for the built-in model contains none, so those two classes still rest on synthetic training examples, verified by the ground-truth clips in `VERIFY.md` rather than graded real audio.
 - Layer separation (HPSS) is slow on long clips, so keep clips under about 30 s.
 - A glide inside one note is written as pitch-bend points; a pitch jump over 1 semitone starts a new note.
 - Tempo detection reads a uniform 8th-note grid at slow tempos as double tempo (a uniform grid carries no accent information to tell the two apart). Quarter-note patterns are detected exactly.
