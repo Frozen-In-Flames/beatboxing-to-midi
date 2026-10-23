@@ -1,1 +1,1 @@
-{"name":"beatbox2midi","private":true,"scripts":{"train":"node train/train.mjs data"},"type":"module","version":"1.0.1"}
+{"name":"beatbox2midi","private":true,"scripts":{"train":"node train/train.mjs data"},"type":"module","version":"1.0.2"}

@@ -16,9 +16,10 @@ The app is written as ES modules (`<script type="module">`). Browsers refuse to 
 
 ## What is inside
 - `index.html` and `src/`: the app (record or open a clip, convert, download one MIDI per sound type plus a master).
-- `model/model.json`: the trained classifier, if one was committed. The app fetches it relative to the page; if it is missing, built-in rules are used instead.
+- `model/model.json` and `model/model-aries.json`: the two trained classifiers (general and personal). The app fetches them relative to the page; if both are missing, built-in rules are used instead. A picker in the Convert section chooses between them.
+- `PROVENANCE.md`: the audit manifest for the personal model, naming the recordings its weights were trained on and giving a SHA-256 for each one. The recordings themselves live in the `dataset/` folder of the repository; they are not in this zip, so the zip stays small.
 - `train/` and `package.json`: the optional training script (`npm run train` with labelled WAVs in `data/<label>/`), for use with Node.js.
 - `README.md` and `LICENSE`.
 
 ## Network use
-None. There are no CDNs, fonts, analytics, or remote calls. The only request the page makes is the optional relative `model/model.json` from the same folder.
+None. There are no CDNs, fonts, analytics, or remote calls. The only requests the page makes are the relative `model/model.json` and `model/model-aries.json` from the same folder.

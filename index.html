@@ -53,6 +53,15 @@
   <section>
     <h2>Convert</h2>
     <div class="row">
+      <label>Built-in model
+        <select id="modelsel" aria-label="Built-in model">
+          <option value="avp" selected>General model (AVP, 25 voices)</option>
+          <option value="aries">Aries personal model (creator's own voice)</option>
+        </select>
+      </label>
+    </div>
+    <p><small id="modelinfo"></small></p>
+    <div class="row">
       <label>Tempo, blank to detect <input id="bpm" type="number" placeholder="auto" min="40" max="240" style="width:5em"></label>
       <label><input id="quant" type="checkbox"> Snap to 16th notes</label>
       <label><input id="layers" type="checkbox" checked> Separate humming from beats</label>

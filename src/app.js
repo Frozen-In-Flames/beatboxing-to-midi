@@ -1,5 +1,5 @@
 import { analyze, estimateBpm } from './dsp.js';
-import { classify, setModel, vec } from './classify.js';
+import { classify, setModel, selectModel, activeModelName, vec } from './classify.js';
 import { kmeans, zs } from './model.js';
 import { hpss, pitchNotes } from './layers.js';
 import { buildMidi } from './midi.js';
@@ -8,11 +8,28 @@ const $ = id => document.getElementById(id);
 const DRUM = { kick: 36, snare: 38, hat: 42 }, SFX = [39, 56, 54, 70, 69, 75], CH = { bass: 0, hum: 1 };
 let clip = null, rec = null, cal = [];
 try { cal = JSON.parse(localStorage.getItem('bb-cal') || '[]'); } catch {}
-fetch('model/model.json').then(r => (r.ok ? r.json() : null)).then(m => m && setModel(m)).catch(() => {}); // optional trained model
+
+// Two built-in models ship with the app; the picker in the Convert section chooses between them.
+// The general model is the default: the personal model is trained on one voice only (see README).
+const MODEL_LABEL = { avp: 'the general model (AVP)', aries: 'the Aries personal model' };
+const MODEL_INFO = {
+  avp: 'General model: trained on 25 voices from the AVP dataset. Measured 60.3% on voices it never heard. The safer default for a new voice.',
+  aries: "Personal model: trained only on the creator's own voice recordings (the audio ships in this repo; see PROVENANCE.md). Measured 62.4% on his held-out sounds and 34.1% on the AVP voices, so expect it to fit voices like his and miss others.",
+};
+const showModel = () => {
+  const name = activeModelName();
+  $('modelsel').value = name;
+  $('modelinfo').textContent = MODEL_INFO[name];
+  showCal();
+};
+const fetchModel = (name, url) => fetch(url).then(r => (r.ok ? r.json() : null)).then(m => { if (m) { setModel(name, m); showModel(); } }).catch(() => {});
+fetchModel('avp', 'model/model.json');
+fetchModel('aries', 'model/model-aries.json');
+$('modelsel').onchange = () => { selectModel($('modelsel').value); showModel(); };
 
 const showCal = () => {
   const n = {}; cal.forEach(c => (n[c.label] = (n[c.label] || 0) + 1));
-  $('calinfo').textContent = cal.length ? Object.entries(n).map(([k, v]) => `${k} ${v}`).join(', ') : 'No samples yet. Using the built-in model.';
+  $('calinfo').textContent = cal.length ? Object.entries(n).map(([k, v]) => `${k} ${v}`).join(', ') : `No samples yet. Using ${MODEL_LABEL[activeModelName()]}.`;
 };
 const saveCal = () => { try { localStorage.setItem('bb-cal', JSON.stringify(cal)); } catch {} showCal(); };
 
@@ -96,4 +113,4 @@ function run() {
   $('status').textContent = `${bpm} BPM. ` + tracks.map(t => `${t.name} ${t.notes.length}`).join(', ');
 }
 $('go').onclick = () => { $('status').textContent = 'Working...'; setTimeout(run, 30); };
-showCal();
+showModel();
