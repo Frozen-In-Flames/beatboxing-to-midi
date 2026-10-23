@@ -65,8 +65,10 @@
       <label>Tempo, blank to detect <input id="bpm" type="number" placeholder="auto" min="40" max="240" style="width:5em"></label>
       <label><input id="quant" type="checkbox"> Snap to 16th notes</label>
       <label><input id="layers" type="checkbox" checked> Separate humming from beats</label>
+      <label><input id="basicpitch" type="checkbox"> Enhanced pitch (Basic Pitch, online)</label>
       <label>Sensitivity <input id="sens" type="range" min="0.5" max="3" step="0.1" value="1"></label>
     </div>
+    <p><small id="bpinfo"></small></p>
     <p><button id="go" class="primary">Convert to MIDI</button></p>
     <div id="out"></div>
     <div id="clusters"></div>

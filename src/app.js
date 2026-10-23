@@ -2,6 +2,8 @@ import { analyze, estimateBpm } from './dsp.js';
 import { classify, setModel, selectModel, activeModelName, vec } from './classify.js';
 import { kmeans, zs } from './model.js';
 import { hpss, pitchNotes } from './layers.js';
+import { mergeVoiced } from './pitchlayer.js';
+import { createBrowserEngine } from './basicpitch.js';
 import { buildMidi } from './midi.js';
 
 const $ = id => document.getElementById(id);
@@ -55,10 +57,16 @@ $('cal').onclick = () => {
 };
 $('clear').onclick = () => { cal = []; saveCal(); };
 
-function run() {
+$('basicpitch').onchange = () => {
+  $('bpinfo').textContent = $('basicpitch').checked
+    ? 'Enhanced pitch loads on demand when you convert: ONNX Runtime Web from a CDN, plus the Basic Pitch model (228 KB) served with this page. It proposes sustained bass and hum notes; the built-in tracker still writes every pitch bend and glide. Works with layer separation on.'
+    : '';
+};
+
+async function run() {
   if (!clip) return ($('status').textContent = 'Record or open a clip first.');
   const sens = +$('sens').value, vel = r => Math.min(127, Math.max(20, Math.round(r * 160)));
-  let hits, voiced = [];
+  let hits, voiced = [], bpNote = '';
   if ($('layers').checked) { // hats and drums from the percussive layer, hums and bass from the harmonic layer
     const { harm, perc } = hpss(clip.x);
     // The percussive layer carries a faint ripple from the harmonic layer (mask jitter on steady
@@ -68,7 +76,25 @@ function run() {
     hits = raw.filter(e => e.f.rms >= 0.08 * pk).map(e => ({ ...e, label: classify({ ...e.f, clarity: 0, pitch: 0 }, cal) }));
     hits.forEach(h => { if (h.label in CH) h.label = 'sfx'; });
     voiced = pitchNotes(harm, clip.sr);
-  } else hits = analyze(clip.x, clip.sr, sens).map(e => ({ ...e, label: classify(e.f, cal) }));
+    if ($('basicpitch').checked) {
+      // Enhanced pitch: Basic Pitch proposes the sustained pitched events and the built-in
+      // tracker keeps bends and glides (src/pitchlayer.js). The engine loads on demand; if it
+      // cannot load (no internet, CDN blocked), the conversion proceeds with the built-in
+      // tracker alone and the status line says so.
+      $('status').textContent = 'Loading the enhanced pitch engine...';
+      try {
+        const engine = await createBrowserEngine();
+        const { notes } = await engine(clip.x, clip.sr);
+        voiced = mergeVoiced(voiced, notes);
+        bpNote = ' Enhanced pitch on.';
+      } catch {
+        bpNote = ' Enhanced pitch unavailable (it needs an internet connection); the built-in pitch tracker was used.';
+      }
+    }
+  } else {
+    hits = analyze(clip.x, clip.sr, sens).map(e => ({ ...e, label: classify(e.f, cal) }));
+    if ($('basicpitch').checked) bpNote = ' Enhanced pitch needs layer separation on; it was not used.';
+  }
 
   const drums = [];
   for (const h of hits) {
@@ -110,7 +136,7 @@ function run() {
     b.onclick = () => { g.forEach(h => cal.push({ label: sel.value, f: h.f })); saveCal(); run(); };
     row.append(`sfx${i + 1}: ${g.length} sounds`, sel, b); cl.append(row);
   });
-  $('status').textContent = `${bpm} BPM. ` + tracks.map(t => `${t.name} ${t.notes.length}`).join(', ');
+  $('status').textContent = `${bpm} BPM. ` + tracks.map(t => `${t.name} ${t.notes.length}`).join(', ') + bpNote;
 }
 $('go').onclick = () => { $('status').textContent = 'Working...'; setTimeout(run, 30); };
 showModel();

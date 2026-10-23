@@ -85,3 +85,35 @@ v1.0.2 adds `model/model-aries.json` (the Aries personal model, trained only on 
 - **Ground-truth battery, general model active (the default): PASS, identical to v1.0.1.** Layered clip: exactly 8 hat notes (channel 9, note 42) and exactly 1 pitched note (MIDI 45, channel 0). Glide clip: hum notes at MIDI 57 and 67 with exactly 126 pitch-bend events.
 - **Ground-truth battery, personal model active:** the pitched layer is identical (bass 1 at MIDI 45; glide notes 57 and 67, 126 bends), because it comes from the layers path, not the classifier. The synthetic hat clicks in the layered clip are labelled mostly kick (kick 5, snare 1, hat 1, sfx1 1): the personal model was trained on a real voice, not on these synthetic clicks, and the battery clip is outside its domain. Recorded as measured; the default model path is unaffected.
 - **Dataset integrity:** all 10 stems in `dataset/` hash to the SHA-256 values printed in `PROVENANCE.md`.
+
+## v1.0.3 addendum (Basic Pitch pitched layer, re-verified in the repo)
+
+v1.0.3 adds `src/basicpitch.js` (an original JavaScript port of the Basic Pitch reference decoding: framing, output unwrapping, polyphonic note decoder with inferred onsets and the melodia trick, plus the harmonic-companion filter), `src/pitchlayer.js` (the merge with the built-in tracker), a vendored model at `model/basic-pitch/nmp.onnx` (byte-identical to the upstream file, SHA-256 2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec), an "Enhanced pitch" toggle in the page, and `NOTICE.md`. `src/dsp.js`, `src/classify.js`, `src/model.js`, `src/layers.js`, and `src/midi.js` are unchanged. Verification ran in Node against the repo's real modules, mirroring `src/app.js`'s conversion path, with onnxruntime-node standing in for ONNX Runtime Web behind the same `proposeNotes()` code and the same vendored model file. One environment limit, stated plainly: no headless browser was available this pass, so the browser-side runtime loader itself was not exercised; the Pages demo serves the identical files, and everything downstream of the runtime (framing, decoding, filtering, merging, MIDI) is the code verified here.
+
+**Port fidelity (JS port vs the Python reference implementation, same mono mixdowns the gate-2 exam used):**
+
+| Clip | JS raw | Python raw | JS filtered | Python filtered | JS coverage | Python coverage |
+|---|---|---|---|---|---|---|
+| layered | 1 | 1 | 1 | 1 | 4.11 s | 4.11 s |
+| glide | 4 | 4 | 4 | 4 | 1.74 s | 1.74 s |
+| bass stem | 67 | 67 | 65 | 65 | 16.52 s | 16.53 s |
+| hum stem | 124 | 122 | 99 | 97 | 40.08 s | 39.95 s |
+| throat stem | 72 | 70 | 54 | 52 | 38.47 s | 38.45 s |
+
+Counts are identical on the bass, layered, and glide material. The hum and throat stems differ by two notes each, traced to the resampler (the port's windowed-sinc versus the reference's soxr); coverage agrees to about 0.1 s throughout.
+
+**Threshold decision (measured, grid over onset {0.5, 0.6, 0.7} x frame {0.3, 0.4}, Python reference):** phantom notes on the 83.6 s drums-only control fell from 23 (defaults) to 20, 11, or 8 at stricter settings, but the bass stem's recovery collapsed with them (67 notes / 17.2 s at defaults; 43 / 15.0 s at onset 0.6; 31 notes / 7.3 s at frame 0.4; 18 / 6.4 s at both). The shipped configuration keeps the library defaults (onset 0.5, frame 0.3, minimum note length 127.70 ms): the phantom rate stays at the benched level, and the phantom problem is instead handled by the harmonic filter and the merge, which cost no fundamental notes.
+
+**Harmonic-companion filter (before to after, JS port):** bass 67 to 65 notes, companions 2 to 0; hum 124 to 99, companions 25 to 0; throat 72 to 54, companions 18 to 0. The filter drops a note when a strictly stronger note overlaps it in time and it sits within 1 semitone of a harmonic (2nd to 16th) of that stronger note.
+
+**App path with Enhanced pitch on (his stems, peak-normalised as the app loads them):** bass stem: built-in tracker 10 voiced notes; Basic Pitch proposed 67, 65 after the filter; merged output 65 pitched events, 16.53 s of pitched coverage. Hum stem: built-in 127; proposed 125, 100 after the filter; merged 92. Throat stem: built-in 85; proposed 73, 55 after the filter; merged 55.
+
+**Ground-truth battery, default path (toggle off): PASS, identical to v1.0.2.** Layered clip: exactly 8 hat notes and exactly 1 pitched note (MIDI 45, channel 0). Glide clip: hum notes at MIDI 57 and 67 with exactly 126 pitch-bend events.
+
+**Ground-truth battery, Enhanced pitch on: PASS.** Layered clip identical (the single proposal agrees with the built-in note, which the merge keeps). Glide clip: hum notes at MIDI 57 and 67 with exactly 126 pitch-bend events. Basic Pitch's own 4 proposals on the glide (55, a sweep fragment pair, 67) are correctly disposed of by the merge: the fragments fall under glide ownership and drop, the 67 is an agreement and the built-in note is kept whole. This is the agreed boundary executing in code, not just in prose.
+
+**Glide qualification (a merge rule tightened by measurement):** a built-in note counts as a glide when its bend span exceeds 1.5 semitones over at least 0.3 s with at least 10 bend points. With a bend-span-only rule, short bent fragments the tracker emits on drum sounds survived the merge on the negative control (32 voiced notes, 0.383/s); with the duration and bend-count conditions added, they do not (below), and the glide battery is unchanged.
+
+**Negative control, Enhanced pitch on, app path (drums-only AVP improvisations plus the synthetic hat clip; every voiced note is a hallucination):** P1 3, P6 12, P7 7, P8 0, P13 0, tempo90 0; total 22 notes in 83.6 s = **0.263 notes/s**. Comparisons: the untuned Python reference at the same thresholds, 23 notes, 0.275/s (the benched 0.28/s); the built-in YIN layer alone through the same path, 55 notes, 0.66/s.
+
+**v1.0.2 harness numbers reproduced with v1.0.3 code in place:** the stratified split protocol re-grades at **62.4%** (per-class figures identical: hat 74.3%, sfx 71.0%, hum 66.7%, kick 53.1%, snare 53.1%, bass 51.3%), the general model cross-check on the same held-out events re-grades at **39.6%** with bass at **0.0%**, and retraining the candidate on all 1,092 events reproduces the shipped `model/model-aries.json` byte for byte (SHA-256 af7351bdf5e1ae3fbfc69609624de02ab9c2699c5c3e4781c430479ffeb830ef). The drum side did not move.

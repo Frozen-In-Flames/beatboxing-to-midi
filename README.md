@@ -9,12 +9,14 @@ Dated record:
 - v1.0.0, October 2026: first public release.
 - v1.0.1, October 2026: built-in classifier retrained on real labeled audio (the AVP dataset, CC-BY-4.0), scoring 60.3% on voices never heard in training.
 - v1.0.2, October 2026: the first personal model, trained only on the creator's own voice recordings. The recordings themselves ship in `dataset/` with the audit manifest in `PROVENANCE.md`, so the weights can be traced back to the exact audio they were trained on.
+- v1.0.3, October 2026: the Basic Pitch pitched layer. Spotify's Basic Pitch (Apache License 2.0, Copyright 2022 Spotify AB; see `NOTICE.md`) is incorporated as a credited third-party component that proposes sustained bass and hum notes when the user enables "Enhanced pitch". The creator's own pitch tracker keeps pitch bends and glides, and both drum models are unchanged. The component was benchmarked against the existing pipeline before it was incorporated (2026-10-23) and admitted only where it measured better.
 
 ## What it does
 - Record from the mic (browser voice processing switched off, since it smears hats) or open an audio file.
 - Onset detection (spectral flux) finds each sound; per-event features and YIN pitch describe it.
 - Classification three ways, in order: your own calibration samples (nearest neighbour), the active built-in model, or built-in rules. Two built-in models ship with the app, and a picker in the Convert section chooses between them: the general model (`model/model.json`) and the Aries personal model (`model/model-aries.json`).
 - Layer separation (HPSS) splits a clip into a harmonic layer and a percussive layer, so a hum under hats is tracked as pitch while the hats are detected as drums.
+- Enhanced pitch (optional, online): with layer separation on, an "Enhanced pitch" toggle brings in the Basic Pitch model to propose sustained bass and hum notes. It loads on demand at convert time and changes nothing unless you turn it on. Pitch bends and glides still come from the built-in tracker. See the Enhanced pitch section below.
 - Pitch bends: a pitch jump over 1 semitone starts a new note; smaller movement stays one note with pitch-bend points (bend range 12 semitones).
 - Tempo is detected from the onsets when the Tempo box is left blank, and can snap events to 16th notes.
 - Unknown SFX are clustered by timbre into `sfx1`, `sfx2`, and so on, each with its own MIDI note and file. Name a cluster in the page and those sounds become calibration samples and the conversion reruns.
@@ -32,7 +34,7 @@ python3 -m http.server
 # open http://localhost:8000
 ```
 
-A local server is required because browsers will not load ES modules from `file://`. The app makes no external network requests; the only files it ever fetches are the two model files next to it. See `OFFLINE.md` in the zip for details.
+A local server is required because browsers will not load ES modules from `file://`. By default the app makes no external network requests; the only files it fetches are the classifier model files next to it. The one exception is the Enhanced pitch toggle (online use only): enabling it fetches ONNX Runtime Web from a CDN plus the Basic Pitch model served with the page. In the offline package the toggle simply reports itself unavailable and the built-in pitch tracker is used. See `OFFLINE.md` in the zip for details.
 
 ## Built-in models and measured accuracy
 Two trained models ship with the app. The picker in the Convert section chooses which one labels your sounds, and the page states which is active. Your own calibration, when present, overrides both. The general model is the default, for the measured reason in the personal model section below: the personal model wins on its own voice and loses on everyone else's, so it is offered as a labeled choice, never swapped in silently.
@@ -56,6 +58,18 @@ Trained only on the creator's own voice: 1,092 sounds segmented from the 10 stud
 - **The tradeoff runs both ways**: the personal model scores **34.1%** on the AVP voices (against the general model's 60.3% participant-held-out there). A model of one mouth is a model of one mouth.
 - **Calibration note**: on the creator's own data, few-sample calibration tops out at 49.3% (10 samples per class; 41.6% at 3 and at 5 per class), below the trained personal model's 62.4%. The usual advice that calibration wins was measured on the general model's benchmark; on this voice, the trained model wins. Both results are reported as measured.
 
+## Enhanced pitch (v1.0.3, optional, online)
+The built-in pitch tracker (YIN over the HPSS harmonic layer) is good at bends and glides and weak at one measured thing: sustained vocal bass. On the creator's own 56 s bass stem it recovered 10 notes covering 1.5 s; the rest failed its clarity gate, because his bass is a pulse-like sound, not a clean tone. Basic Pitch, a transcription model built for sustained pitched notes, recovered the line. v1.0.3 therefore splits the pitched layer by measured strength:
+
+- **Basic Pitch proposes sustained pitched events** (onset, offset, pitch) when you enable the "Enhanced pitch" toggle. It reads the raw clip, no HPSS needed.
+- **The built-in tracker keeps pitch bends and glides.** A note whose bend contour travels (a glide) is kept exactly as the built-in tracker wrote it, and Basic Pitch proposals overlapping it are dropped. Where the two agree on a note, the built-in version wins, because its bend contour is continuous where the model's is stepped.
+- **Harmonic-companion suppression.** A voice's upper partials make the model report extra simultaneous notes at harmonic positions of a stronger fundamental; left in, they write a second, wrong melody line into the MIDI. A filter in `src/basicpitch.js` suppresses a note when a strictly stronger note overlaps it in time and it sits within 1 semitone of a harmonic (2nd to 16th) of that stronger note. Measured on the creator's stems, simultaneous harmonic companions went from 2 to 0 (bass), 25 to 0 (hum), and 18 to 0 (throat), at a cost of 2, 25, and 18 notes respectively: bass kept 65 of 67 notes, hum 99 of 124, throat 54 of 72.
+- **Thresholds.** The model runs at its library default thresholds (onset 0.5, frame 0.3, minimum note length 127.70 ms), chosen by measurement: on the drums-only negative control (83.6 s of AVP improvisations and hat clicks, where every pitched note is a hallucination), the tuned configuration produces 22 phantom notes, 0.263 per second, at the benched untuned level (0.28/s) and well under the built-in layer's 0.66/s. Every stricter threshold setting tested cost far more real notes than it saved in phantoms (raising the frame threshold to 0.4 cut the bass line's coverage from 17.2 s to 7.3 s).
+
+Measured on the creator's stems, app path, enhanced pitch on: the bass stem yields 65 pitched events covering 16.5 s (the built-in tracker alone: 10 notes); the hum stem 92 pitched events (built-in: 127 notes, cleaner in key but more fragmented); the throat-singing stem 55 (built-in: 85, fragmented). Full protocol and tables: `VERIFY.md`.
+
+The cost is stated plainly: the toggle is an online feature. Turning it on fetches ONNX Runtime Web (about 4 MB) from a CDN and the 228 KB model from this site, on demand, at convert time. Off, or offline, everything behaves exactly as v1.0.2. The model ships unmodified in `model/basic-pitch/nmp.onnx` under its Apache License 2.0 terms; attribution, the courtesy citation, and the license text are in `NOTICE.md` and `model/basic-pitch/LICENSE.basic-pitch.txt`.
+
 ## Teach it your sounds (calibration)
 Record yourself repeating one sound, pick its name, then "Add clip as samples". Five or more repeats per sound works best. Calibration takes over once it covers at least two different sound types with at least three samples total; until then the trained model or the built-in rules do the labelling. Samples live in your browser's localStorage.
 
@@ -75,8 +89,9 @@ A beatbox is one mouth on one channel, so there are no stems to separate. The ap
 
 1. `src/dsp.js` detects onsets (spectral flux) and measures each sound: spectral centroid, low and high energy, zero crossings, decay length, and pitch (YIN). It also estimates tempo from onset times.
 2. `src/layers.js` splits layers (median-filter HPSS) and tracks pitch contours into notes with bends.
-3. `src/classify.js` labels each sound (rules, trained model, or calibration k-NN), and `src/model.js` holds the shared math: z-scoring, k-means for SFX clusters, and the small neural net the trained model uses.
-4. `src/midi.js` writes standard MIDI files (format 1, one track per class plus a master).
+3. `src/basicpitch.js` (only when Enhanced pitch is on) runs the Basic Pitch model and decodes its output into sustained pitched-event proposals, with the harmonic-companion filter applied. `src/pitchlayer.js` merges those proposals with the built-in tracker's notes under the boundary described above.
+4. `src/classify.js` labels each sound (rules, trained model, or calibration k-NN), and `src/model.js` holds the shared math: z-scoring, k-means for SFX clusters, and the small neural net the trained model uses.
+5. `src/midi.js` writes standard MIDI files (format 1, one track per class plus a master).
 
 ## Limits
 - Snare is the weak class, and the limit is the feature space, not the tuning: the general model fits snare at only 40% even on its own training data, because amateur "pf" snares genuinely overlap hats and kicks in the measured features. Per-user calibration (74.5% on the benchmark) is the current best fix for the general model. The personal model's held-out snare is 53.1% on the creator's voice (up from 41.7% for the general model on unseen voices, and 28.1% for the general model grading his snares), and it is still the weakest drum class: his snare subtypes measure as two opposed families, one kick-like and one hat-like, so the class confuses in both directions.
@@ -88,9 +103,12 @@ A beatbox is one mouth on one channel, so there are no stems to separate. The ap
 - Tempo detection reads a uniform 8th-note grid at slow tempos as double tempo (a uniform grid carries no accent information to tell the two apart). Quarter-note patterns are detected exactly.
 - Unknown sounds that sit inside a known class's feature range (for example a soft noise burst among snares) are labelled as that class; clearly distinct timbres are the ones that reach the SFX clusters.
 - Calibration samples live in your browser's localStorage.
+- Enhanced pitch needs an internet connection and downloads about 4 MB of runtime the first time it is used in a session. It is off by default and the offline package does not include it.
+- The harmonic-companion filter removes throat-singing overtone melodies along with the model's spurious companions: an overtone line is a real second melody in that technique, but it sits at harmonic positions of a stronger fundamental, which is exactly what the filter suppresses. The built-in tracker path remains available for that material by leaving the toggle off.
+- On hum, the enhanced layer's proposals are not uniformly better: the built-in tracker's notes sat in the stated key more often in the gate-2 exam (57.5% versus 49.2% of notes in C minor). The merge treats hum as contested territory (agreement goes to the built-in note), but a hum line the two segment differently follows the proposals.
 
 ## Roadmap
-An event timeline view and a better pitch tracker for noisy rooms.
+An event timeline view, and a second-session validation recording for the personal model.
 
 ## License
 MIT, Copyright (c) 2026 Aries Hilton. See `LICENSE`.
