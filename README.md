@@ -1,6 +1,10 @@
 # Beatboxing to MIDI (Frozen In Flames Edition)
 
-A static web app that turns a beatbox recording into fully programmed MIDI: the drums apart from the bass apart from the humming apart from all other SFX. You get one MIDI file per sound type (kick, snare, hat, bass, hum, sfx1, sfx2, ...) plus a master file with every track. Everything runs in the browser, so it works on GitHub Pages with no backend and no build step.
+A static web application that transcribes a beatbox recording into programmed MIDI. Onset detection and classification separate the performance into its constituent sound types (kick, snare, hat, bass, hum, and effects), and the result is exported as one Standard MIDI File per sound type together with a combined master file. Execution is entirely in the browser: no backend and no build step.
+
+## Live demonstration
+
+- [Beatboxing to MIDI](https://frozen-in-flames.github.io/beatboxing-to-midi/): the full application, running in the browser.
 
 ## Authorship and version history
 Beatboxing to MIDI (Frozen In Flames Edition) was created, designed, and built by Aries Hilton (Frozen In Flames). It is an original work: the onset detection, classification, calibration, layer separation, and MIDI export pipeline was designed and shipped by its author before any third-party transcription component was involved in it.
