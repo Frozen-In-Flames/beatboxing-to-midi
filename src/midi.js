@@ -14,9 +14,21 @@ function track(events) { // events: [{ t: ticks, o: order, b: bytes }]
 }
 
 // tracks: [{ name, channel (0-15, 9 = drums), notes: [{ time (s), dur (s), note, vel }] }]
-export function buildMidi(tracks, bpm = 120) {
+// meter: { numerator, denominator } for the conductor time signature (meta 0x58).
+// The app grid is built on 16th notes in 4/4, so 4/4 is the default; callers that
+// know another meter pass it explicitly. FIF SMF contract (fif-smf-1): format 1,
+// PPQ 480, conductor track named "Tempo" carrying tempo (0x51) and time
+// signature (0x58) at tick 0, every track named at tick 0, channel 9 for drums.
+export function buildMidi(tracks, bpm = 120, meter = { numerator: 4, denominator: 4 }) {
   const tk = s => Math.round((s * bpm / 60) * PPQ), us = Math.round(6e7 / bpm);
-  const conductor = track([{ t: 0, o: -1, b: [0xff, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255] }]);
+  const dd = Math.log2(meter.denominator);
+  if (!Number.isInteger(dd) || dd < 0 || meter.numerator < 1) throw new Error(`bad meter ${meter.numerator}/${meter.denominator}`);
+  const cname = str('Tempo');
+  const conductor = track([
+    { t: 0, o: -2, b: [0xff, 0x03, cname.length, ...cname] },
+    { t: 0, o: -1, b: [0xff, 0x51, 3, (us >> 16) & 255, (us >> 8) & 255, us & 255] },
+    { t: 0, o: 0, b: [0xff, 0x58, 4, meter.numerator, dd, 24, 8] },
+  ]);
   const body = tracks.map(({ name, channel, notes, bendRange = 0 }) => {
     const nm = str(name), ev = [{ t: 0, o: -1, b: [0xff, 0x03, nm.length, ...nm] }];
     if (bendRange) for (const [c, v] of [[101, 0], [100, 0], [6, bendRange], [38, 0], [101, 127], [100, 127]]) ev.push({ t: 0, o: -0.5, b: [0xb0 | channel, c, v] });

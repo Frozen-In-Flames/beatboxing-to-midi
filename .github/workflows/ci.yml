@@ -1,0 +1,22 @@
+# CI for beatboxing-to-midi.
+# Runs the dataset regression in tests/regression.mjs: the headless
+# transcription path over every clip in dataset/, asserting the
+# PROVENANCE.md event counts and the fif-smf-1 contract shape of every
+# master and per-class export. The app has no dependencies, so the job
+# is a plain Node setup.
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run dataset regression
+        run: npm test
